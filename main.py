@@ -1,4 +1,5 @@
-import sqlite3
+import os
+import psycopg2
 import random
 from telegram import Update
 from telegram.ext import (
@@ -9,12 +10,16 @@ TOKEN = "7846671959:AAE9QJ3nFNWNrGXZInp6utnCugaYU1QhJpI"
 ADMIN_USERNAME = "m0onstoun"
 
 # Создание базы данных
-conn = sqlite3.connect("valentines.db", check_same_thread=False)
+DATABASE_URL = os.getenv("DATABASE_URL",
+                         "postgresql://postgres:NeHOTwRTxSabYitdgNedblEXNsYvGLBi@postgres.railway.internal:5432/railway")
+
+# Подключение к PostgreSQL
+conn = psycopg2.connect(DATABASE_URL, sslmode="require")
 cursor = conn.cursor()
 
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id INTEGER PRIMARY KEY SERIAL,
     username TEXT UNIQUE,
     question TEXT,
     answer TEXT,
@@ -118,7 +123,7 @@ async def add_valentine_message(update: Update, context: ContextTypes.DEFAULT_TY
     answer = context.user_data["answer"]
     message = context.user_data["message"]
 
-    cursor.execute("INSERT INTO users (username, question, answer, message) VALUES (?, ?, ?, ?)",
+    cursor.execute("INSERT INTO users (username, question, answer, message) VALUES (%s, %s, %s, %s)",
                    (username, question, answer, message))
     conn.commit()
 
@@ -141,7 +146,7 @@ async def add_greeting(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if greeting:
         try:
-            cursor.execute("INSERT INTO greetings (text) VALUES (?)", (greeting,))
+            cursor.execute("INSERT INTO greetings (text) VALUES (%s)", (greeting,))
             conn.commit()
             await update.message.reply_text(f"✅ Добавлено новое поздравление:\n{greeting}")
         except sqlite3.IntegrityError:
@@ -187,7 +192,7 @@ async def remove_valentine(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     try:
         username = context.args[0]
-        cursor.execute("DELETE FROM users WHERE username=?", (username,))
+        cursor.execute("DELETE FROM users WHERE username=%s", (username,))
         conn.commit()
         await update.message.reply_text(f"✅ Валентинка для @{username} удалена!")
     except:
