@@ -1,166 +1,242 @@
-import logging
-from telegram.ext import Application, MessageHandler, filters, CommandHandler, ConversationHandler
-
-# Настройка логирования
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO
+import sqlite3
+import random
+from telegram import Update
+from telegram.ext import (
+    Application, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler
 )
-logger = logging.getLogger(__name__)
 
-# Хранилище данных
-registered_players = {}  # {номер: username}
-player_points = {}  # {username: points}
-user_chat_ids = {}  # {username: chat_id}  <-- Добавлено для хранения chat_id игроков
-safe_code = "0000"  # Код от сейфа
-special_word = "секрет"  # Специальное слово
+TOKEN = "7846671959:AAE9QJ3nFNWNrGXZInp6utnCugaYU1QhJpI"
+ADMIN_USERNAME = "m0onstoun"
 
-WAITING_FOR_NUMBER = 1
-ADMIN_1 = "m0onstoun"
-ADMIN_2 = "delacamomille"
-ADMINS = [ADMIN_1, ADMIN_2]
+# Создание базы данных
+conn = sqlite3.connect("valentines.db", check_same_thread=False)
+cursor = conn.cursor()
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE,
+    question TEXT,
+    answer TEXT,
+    message TEXT
+)
+""")
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS greetings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    text TEXT UNIQUE
+)
+""")
+
+# Добавляем стандартное поздравление (если нет)
+cursor.execute("INSERT OR IGNORE INTO greetings (text) VALUES ('С днем любви!')")
+conn.commit()
+
+# Состояния для добавления валентинки
+USERNAME, QUESTION, ANSWER, MESSAGE = range(4)
 
 
-async def register_number(update, context):
-    """Регистрация нового номера (доступно только ADMIN_1)."""
-    username = update.effective_user.username
-    if username != ADMIN_1:
-        await update.message.reply_text("У вас нет прав регистрировать номера.")
+# === Функции ===
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Приветствие"""
+    username = update.message.from_user.username
+    cursor.execute("SELECT question FROM users WHERE username=?", (username,))
+    user = cursor.fetchone()
+
+    if user:
+        await update.message.reply_text(f"Привет, {username}! Ответь на секретный вопрос:\n {user[0]}")
         return
 
-    if not context.args:
-        await update.message.reply_text("Используйте команду /register <номер>")
-        return
+    # Получаем список всех поздравлений и выбираем рандомное
+    cursor.execute("SELECT text FROM greetings")
+    greetings = cursor.fetchall()
 
-    new_number = context.args[0]
-    if new_number in registered_players:
-        await update.message.reply_text("Этот номер уже зарегистрирован.")
+    if greetings:
+        greeting = random.choice(greetings)[0]
+        await update.message.reply_text(greeting)
     else:
-        registered_players[new_number] = None
-        await update.message.reply_text(f"Новый номер {new_number} зарегистрирован. Ожидается ввод игрока.")
+        await update.message.reply_text("С днем любви!")
 
 
-async def start(update, context):
-    """Приветствие пользователей и запрос номера."""
-    username = update.effective_user.username
-    chat_id = update.message.chat_id  # Получаем chat_id
-    user_chat_ids[username] = chat_id  # Сохраняем chat_id пользователя
+async def check_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Проверка ответа"""
+    username = update.message.from_user.username
+    answer = update.message.text.strip()
 
-    if username == ADMIN_1:
-        await update.message.reply_text("Приветствую, господин!")
-        return
-    elif username == ADMIN_2:
-        await update.message.reply_text("Приветствую, госпожа!")
-        return
+    cursor.execute("SELECT answer, message FROM users WHERE username=?", (username,))
+    user = cursor.fetchone()
 
-    # Если пользователь уже зарегистрирован
-    if username in player_points:
-        await update.message.reply_text(f"Ваши очки: {player_points[username]}.")
+    if user and user[0].lower() == answer.lower():
+        await update.message.reply_text(f"Лично в чатик! Как сказал Гоша:\n\n💌 {user[1]}")
+    elif user:
+        await update.message.reply_text("Неправильно!")
     else:
-        await update.message.reply_text("Введите ваш номер для регистрации")
-        return WAITING_FOR_NUMBER
+        cursor.execute("SELECT text FROM greetings")
+        greetings = cursor.fetchall()
 
-
-async def check_number(update, context):
-    """Проверяет введенный номер и регистрирует пользователя."""
-    username = update.effective_user.username
-    player_number = update.message.text.strip()
-
-    if player_number in registered_players:
-        if registered_players[player_number] is None:
-            registered_players[player_number] = username  # Связываем номер с пользователем
-            player_points[username] = 0
-            context.user_data['number'] = player_number  # Начинаем отсчет очков
-            await update.message.reply_text(f"Добро пожаловать, {player_number}.")
-        elif registered_players[player_number] == username:
-            await update.message.reply_text(f"Ваш номер уже зарегистрирован. Ваши очки: {player_points[username]}.")
+        if greetings:
+            greeting = random.choice(greetings)[0]
+            await update.message.reply_text(greeting)
         else:
-            await update.message.reply_text("Этот номер уже используется другим игроком.")
-    else:
-        await update.message.reply_text("Этот номер не зарегистрирован.")
+            await update.message.reply_text("С днем любви!")
+
+
+# === Добавление валентинки ===
+async def add_valentine_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Начало процесса добавления валентинки"""
+    if update.message.from_user.username != ADMIN_USERNAME:
+        return
+    await update.message.reply_text("Введите username получателя:")
+    return USERNAME
+
+
+async def add_valentine_username(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Запрос секретного вопроса"""
+    context.user_data["username"] = update.message.text.strip()
+    await update.message.reply_text("Введите секретный вопрос:")
+    return QUESTION
+
+
+async def add_valentine_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Запрос ответа на секретный вопрос"""
+    context.user_data["question"] = update.message.text.strip()
+    await update.message.reply_text("Введите ответ на секретный вопрос:")
+    return ANSWER
+
+
+async def add_valentine_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Запрос текста валентинки"""
+    context.user_data["answer"] = update.message.text.strip()
+    await update.message.reply_text("Введите текст валентинки:")
+    return MESSAGE
+
+
+async def add_valentine_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Финальный этап — сохранение в БД"""
+    context.user_data["message"] = update.message.text.strip()
+
+    username = context.user_data["username"]
+    question = context.user_data["question"]
+    answer = context.user_data["answer"]
+    message = context.user_data["message"]
+
+    cursor.execute("INSERT INTO users (username, question, answer, message) VALUES (?, ?, ?, ?)",
+                   (username, question, answer, message))
+    conn.commit()
+
+    await update.message.reply_text(f"✅ Валентинка для @{username} добавлена!")
     return ConversationHandler.END
 
 
-async def add_point(update, context):
-    """Добавляет очко игроку при вводе специального слова или номера игрока админом."""
-    username = update.effective_user.username
-    message_text = update.message.text.strip()
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Отмена ввода"""
+    await update.message.reply_text("🚫 Добавление отменено.")
+    return ConversationHandler.END
 
-    # Если игрок вводит специальное слово — он получает очко
-    if message_text.lower() == special_word:
-        if username in player_points:
-            player_points[username] += 1
-            await update.message.reply_text(
-                f"Вам добавлено 1 очко. Теперь у вас {player_points[username]}."
-            )
 
-            # Проверка на 3 очка
-            if player_points[username] >= 3:
-                await update.message.reply_text(f"Поздравляю, {context.user_data['number']}! Код от сейфа: {safe_code}")
-        else:
-            await update.message.reply_text("Вы еще не зарегистрированы. Введите ваш номер.")
+# === Управление поздравлениями ===
+async def add_greeting(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Добавляет новое поздравление"""
+    if update.message.from_user.username != ADMIN_USERNAME:
+        return
+    greeting = " ".join(context.args)
+
+    if greeting:
+        try:
+            cursor.execute("INSERT INTO greetings (text) VALUES (?)", (greeting,))
+            conn.commit()
+            await update.message.reply_text(f"✅ Добавлено новое поздравление:\n{greeting}")
+        except sqlite3.IntegrityError:
+            await update.message.reply_text("⚠ Такое поздравление уже есть в базе!")
+    else:
+        await update.message.reply_text("⚠ Используйте формат:\n/add_greeting текст")
+
+
+async def remove_greeting(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Удаляет конкретное поздравление"""
+    if update.message.from_user.username != ADMIN_USERNAME:
+        return
+    greeting = " ".join(context.args)
+
+    cursor.execute("DELETE FROM greetings WHERE text=?", (greeting,))
+    conn.commit()
+
+    if cursor.rowcount:
+        await update.message.reply_text(f"✅ Поздравление удалено:\n{greeting}")
+    else:
+        await update.message.reply_text("⚠ Такого поздравления нет в базе!")
+
+
+async def list_greetings(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Выводит список всех поздравлений"""
+    if update.message.from_user.username != ADMIN_USERNAME:
         return
 
-    # Если админ вводит номер — игрок получает очко
-    if username in ADMINS and message_text in registered_players:
-        target_username = registered_players[message_text]
-        if target_username:
-            player_points[target_username] = player_points.get(target_username, 0) + 1
+    cursor.execute("SELECT text FROM greetings")
+    greetings = cursor.fetchall()
 
-            # Сообщение администратору
-            await update.message.reply_text(
-                f"{target_username} получил 1 очко! Теперь у него {player_points[target_username]}."
-            )
-
-            # Отправка сообщения игроку
-            if target_username in user_chat_ids:
-                target_chat_id = user_chat_ids[target_username]
-                await context.bot.send_message(
-                    chat_id=target_chat_id,
-                    text=f"Вам добавлено 1 очко. Теперь у вас {player_points[target_username]}."
-                )
-
-                # Проверка на 3 очка
-                if player_points[target_username] >= 3:
-                    await context.bot.send_message(
-                        chat_id=target_chat_id,
-                        text=f"Поздравляю! Код от сейфа: {safe_code}. Торопись, он действует 5 минут."
-                    )
-        else:
-            await update.message.reply_text("Этот номер зарегистрирован, но игрок еще не вошел в систему.")
+    if greetings:
+        text = "\n".join([f"🔹 {g[0]}" for g in greetings])
+        await update.message.reply_text(f"📜 Список поздравлений:\n{text}")
+    else:
+        await update.message.reply_text("❌ В базе пока нет поздравлений.")
 
 
-async def change_safe_code(update, context):
-    """Меняет код от сейфа (доступно только m0onstoun)."""
-    global safe_code
-    username = update.effective_user.username
-
-    if username != "m0onstoun":
-        await update.message.reply_text("У вас нет прав для изменения кода сейфа.")
+# === Команды для админа ===
+async def remove_valentine(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Удаляет пользователя (для m0onstoun)"""
+    if update.message.from_user.username != ADMIN_USERNAME:
         return
+    try:
+        username = context.args[0]
+        cursor.execute("DELETE FROM users WHERE username=?", (username,))
+        conn.commit()
+        await update.message.reply_text(f"✅ Валентинка для @{username} удалена!")
+    except:
+        await update.message.reply_text("⚠ Ошибка! Используйте формат:\n/remove_valentine username")
 
-    if not context.args:
-        await update.message.reply_text("Используйте команду /setcode <новый_код>")
+
+async def list_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показывает всех зарегистрированных пользователей"""
+    if update.message.from_user.username != ADMIN_USERNAME:
         return
+    cursor.execute("SELECT username FROM users")
+    users = cursor.fetchall()
 
-    safe_code = context.args[0]
-    await update.message.reply_text(f"Новый код от сейфа установлен: {safe_code}")
+    if users:
+        user_list = "\n".join([f"🔹 @{u[0]}" for u in users])
+        await update.message.reply_text(f"📜 Список пользователей:\n{user_list}")
+    else:
+        await update.message.reply_text("❌ Пока нет зарегистрированных пользователей.")
 
 
+# === Запуск Бота ===
 def main():
-    application = Application.builder().token("7580913605:AAFz1PVVEe9_HHxl7U-az4m1zyJMGnWiuT8").build()
+    app = Application.builder().token(TOKEN).build()
+
+    # Команды
+    app.add_handler(CommandHandler("start", start))
     conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("start", start)],
+        entry_points=[CommandHandler("add_valentine", add_valentine_start)],
         states={
-            WAITING_FOR_NUMBER: [MessageHandler(filters.TEXT & ~filters.COMMAND, check_number)],
+            USERNAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_valentine_username)],
+            QUESTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_valentine_question)],
+            ANSWER: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_valentine_answer)],
+            MESSAGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_valentine_message)],
         },
-        fallbacks=[],
+        fallbacks=[CommandHandler("cancel", cancel)]
     )
-    application.add_handler(conv_handler)
-    application.add_handler(CommandHandler("register", register_number))
-    application.add_handler(CommandHandler("setcode", change_safe_code))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, add_point))
-    application.run_polling()
+    app.add_handler(conv_handler)
+    app.add_handler(CommandHandler("add_greeting", add_greeting))
+    app.add_handler(CommandHandler("remove_greeting", remove_greeting))
+    app.add_handler(CommandHandler("list_greetings", list_greetings))
+    app.add_handler(CommandHandler("remove_valentine", remove_valentine))
+    app.add_handler(CommandHandler("list_users", list_users))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check_answer))
+    print("🚀 Бот запущен!")
+    app.run_polling()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
