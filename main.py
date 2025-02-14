@@ -1,38 +1,21 @@
-import os
-import psycopg2
+import sqlite3
 import random
 from telegram import Update
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler
 )
 
+# postgresql://postgres:NeHOTwRTxSabYitdgNedblEXNsYvGLBi@postgres.railway.internal:5432/railway
 TOKEN = "7846671959:AAE9QJ3nFNWNrGXZInp6utnCugaYU1QhJpI"
 ADMIN_USERNAME = "m0onstoun"
 
-print("PGDATABASE:", os.getenv("Postgres.PGDATABASE"))
-print("PGUSER:", os.getenv("PGUSER"))
-print("PGPASSWORD:", os.getenv("PGPASSWORD"))
-print("PGHOST:", os.getenv("PGHOST"))
-print("PGPORT:", os.getenv("PGPORT"))
-
-DATABASE = os.environ.get("PGDATABASE")
-USER = os.environ.get("PGUSER")
-PASSWORD = os.environ.get("PGPASSWORD")
-HOST = os.environ.get("PGHOST")
-PORT = os.environ.get("PGPORT")
-
-conn = psycopg2.connect(
-    dbname=DATABASE,
-    user=USER,
-    password=PASSWORD,
-    host=HOST,
-    port=PORT
-)
+# Создание базы данных
+conn = sqlite3.connect("valentines.db", check_same_thread=False)
 cursor = conn.cursor()
 
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS users (
-    id SERIAL PRIMARY KEY,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT UNIQUE,
     question TEXT,
     answer TEXT,
@@ -42,18 +25,14 @@ CREATE TABLE IF NOT EXISTS users (
 
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS greetings (
-    id SERIAL PRIMARY KEY,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     text TEXT UNIQUE
 )
 """)
 
-cursor.execute("""
-INSERT INTO greetings (text) VALUES ('С днем любви!')
-ON CONFLICT (text) DO NOTHING
-""")
-
+# Добавляем стандартное поздравление (если нет)
+cursor.execute("INSERT OR IGNORE INTO greetings (text) VALUES ('С днем любви!')")
 conn.commit()
-
 
 # Состояния для добавления валентинки
 USERNAME, QUESTION, ANSWER, MESSAGE = range(4)
@@ -63,7 +42,7 @@ USERNAME, QUESTION, ANSWER, MESSAGE = range(4)
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Приветствие"""
     username = update.message.from_user.username
-    cursor.execute("SELECT question FROM users WHERE username=%s", (username,))
+    cursor.execute("SELECT question FROM users WHERE username=?", (username,))
     user = cursor.fetchone()
 
     if user:
@@ -140,7 +119,7 @@ async def add_valentine_message(update: Update, context: ContextTypes.DEFAULT_TY
     answer = context.user_data["answer"]
     message = context.user_data["message"]
 
-    cursor.execute("INSERT INTO users (username, question, answer, message) VALUES (%s, %s, %s, %s)",
+    cursor.execute("INSERT INTO users (username, question, answer, message) VALUES (?, ?, ?, ?)",
                    (username, question, answer, message))
     conn.commit()
 
@@ -163,10 +142,10 @@ async def add_greeting(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if greeting:
         try:
-            cursor.execute("INSERT INTO greetings (text) VALUES (%s)", (greeting,))
+            cursor.execute("INSERT INTO greetings (text) VALUES (?)", (greeting,))
             conn.commit()
             await update.message.reply_text(f"✅ Добавлено новое поздравление:\n{greeting}")
-        except psycopg2.IntegrityError:
+        except sqlite3.IntegrityError:
             await update.message.reply_text("⚠ Такое поздравление уже есть в базе!")
     else:
         await update.message.reply_text("⚠ Используйте формат:\n/add_greeting текст")
@@ -209,7 +188,7 @@ async def remove_valentine(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     try:
         username = context.args[0]
-        cursor.execute("DELETE FROM users WHERE username=%s", (username,))
+        cursor.execute("DELETE FROM users WHERE username=?", (username,))
         conn.commit()
         await update.message.reply_text(f"✅ Валентинка для @{username} удалена!")
     except:
