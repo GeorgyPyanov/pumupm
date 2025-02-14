@@ -19,7 +19,7 @@ cursor = conn.cursor()
 
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY SERIAL,
+    id SERIAL PRIMARY KEY,
     username TEXT UNIQUE,
     question TEXT,
     answer TEXT,
@@ -29,14 +29,18 @@ CREATE TABLE IF NOT EXISTS users (
 
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS greetings (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     text TEXT UNIQUE
 )
 """)
 
-# Добавляем стандартное поздравление (если нет)
-cursor.execute("INSERT OR IGNORE INTO greetings (text) VALUES ('С днем любви!')")
+cursor.execute("""
+INSERT INTO greetings (text) VALUES ('С днем любви!')
+ON CONFLICT (text) DO NOTHING
+""")
+
 conn.commit()
+
 
 # Состояния для добавления валентинки
 USERNAME, QUESTION, ANSWER, MESSAGE = range(4)
@@ -46,7 +50,7 @@ USERNAME, QUESTION, ANSWER, MESSAGE = range(4)
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Приветствие"""
     username = update.message.from_user.username
-    cursor.execute("SELECT question FROM users WHERE username=?", (username,))
+    cursor.execute("SELECT question FROM users WHERE username=%s", (username,))
     user = cursor.fetchone()
 
     if user:
@@ -149,7 +153,7 @@ async def add_greeting(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cursor.execute("INSERT INTO greetings (text) VALUES (%s)", (greeting,))
             conn.commit()
             await update.message.reply_text(f"✅ Добавлено новое поздравление:\n{greeting}")
-        except sqlite3.IntegrityError:
+        except psycopg2.IntegrityError:
             await update.message.reply_text("⚠ Такое поздравление уже есть в базе!")
     else:
         await update.message.reply_text("⚠ Используйте формат:\n/add_greeting текст")
