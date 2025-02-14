@@ -11,7 +11,7 @@ ADMIN_USERNAME = "m0onstoun"
 
 # Создание базы данных
 DATABASE_URL = os.getenv("DATABASE_URL",
-                         "postgresql://postgres:NeHOTwRTxSabYitdgNedblEXNsYvGLBi@postgres.railway.internal:5432/railway")
+                         "postgresql://postgres:NeHOTwRTxSabYitdgNedblEXNsYvGLBi@autorack.proxy.rlwy.net:15483/railway")
 
 # Подключение к PostgreSQL
 conn = psycopg2.connect(DATABASE_URL, sslmode="require")
