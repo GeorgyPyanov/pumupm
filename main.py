@@ -10,8 +10,13 @@ TOKEN = "7846671959:AAE9QJ3nFNWNrGXZInp6utnCugaYU1QhJpI"
 ADMIN_USERNAME = "m0onstoun"
 
 # Создание базы данных
-DATABASE_URL = os.getenv("DATABASE_URL",
-                         "postgresql://postgres:hYuyGIFKTKBNCfDRLIUMoCSwkAtMAyrH@postgres.railway.internal:5432/railway")
+PGUSER = os.getenv("PGUSER", "postgres")
+PGPASSWORD = os.getenv("PGPASSWORD")
+PGHOST = os.getenv("PGHOST", "autorack.proxy.rlwy.net")
+PGPORT = os.getenv("PGPORT", "15483")
+PGDATABASE = os.getenv("PGDATABASE", "railway")
+
+DATABASE_URL = f"postgresql://{PGUSER}:{PGPASSWORD}@{PGHOST}:{PGPORT}/{PGDATABASE}"
 
 # Подключение к PostgreSQL
 conn = psycopg2.connect(DATABASE_URL, sslmode="require")
