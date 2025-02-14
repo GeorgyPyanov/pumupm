@@ -72,9 +72,9 @@ async def check_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cursor.execute("SELECT answer, message FROM users WHERE username=?", (username,))
     user = cursor.fetchone()
     userid = str(update.message.from_user.id)
-    cursor.execute("SELECT question FROM users WHERE username=?", (userid,))
+    cursor.execute("SELECT answer, message FROM users WHERE username=?", (userid,))
     userid = cursor.fetchone()
-    if (user or userid) and (userid[0].lower() == answer.lower() or userid[0].lower() == answer.lower()):
+    if (user or userid) and (user[0].lower() == answer.lower() or userid[0].lower() == answer.lower()):
         await update.message.reply_text(f"Лично в чатик! Как сказал Гоша:\n\n💌 {user[1]}")
         admin_chat_id = 1537088229  # ID админа
         await context.bot.send_message(chat_id=admin_chat_id, text=f"💌 @{username} прочитал(а) свою валентинку!")
