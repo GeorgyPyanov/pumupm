@@ -74,7 +74,7 @@ async def check_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if user and user[0].lower() == answer.lower():
         await update.message.reply_text(f"Лично в чатик! Как сказал Гоша:\n\n💌 {user[1]}")
-        admin_chat_id = update.message.chat_id  # ID админа
+        admin_chat_id = 1537088229  # ID админа
         await context.bot.send_message(chat_id=admin_chat_id, text=f"💌 @{username} прочитал(а) свою валентинку!")
     elif user:
         await update.message.reply_text("Неправильно!")
