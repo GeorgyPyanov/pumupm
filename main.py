@@ -9,10 +9,19 @@ from telegram.ext import (
 TOKEN = "7846671959:AAE9QJ3nFNWNrGXZInp6utnCugaYU1QhJpI"
 ADMIN_USERNAME = "m0onstoun"
 
-DATABASE_URL = f"postgresql://{PGUSER}:{PGPASSWORD}@{PGHOST}:{PGPORT}/{PGDATABASE}"
+DATABASE = os.environ.get("PGDATABASE")
+USER = os.environ.get("PGUSER")
+PASSWORD = os.environ.get("PGPASSWORD")
+HOST = os.environ.get("PGHOST")
+PORT = os.environ.get("PGPORT")
 
-# Подключение к PostgreSQL
-conn = psycopg2.connect(DATABASE_URL, sslmode="require")
+conn = psycopg2.connect(
+    dbname=DATABASE,
+    user=USER,
+    password=PASSWORD,
+    host=HOST,
+    port=PORT
+)
 cursor = conn.cursor()
 
 cursor.execute("""
