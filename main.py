@@ -60,7 +60,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def check_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Проверка ответа"""
     username = update.message.from_user.username
     answer = update.message.text.strip()
 
@@ -69,17 +68,15 @@ async def check_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if user and user[0].lower() == answer.lower():
         await update.message.reply_text(f"Лично в чатик! Как сказал Гоша:\n\n💌 {user[1]}")
+        admin_chat_id = update.message.chat_id  # ID админа
+        await context.bot.send_message(chat_id=admin_chat_id, text=f"💌 @{username} прочитал(а) свою валентинку!")
     elif user:
         await update.message.reply_text("Неправильно!")
     else:
         cursor.execute("SELECT text FROM greetings")
         greetings = cursor.fetchall()
-
-        if greetings:
-            greeting = random.choice(greetings)[0]
-            await update.message.reply_text(greeting)
-        else:
-            await update.message.reply_text("С днем любви!")
+        greeting = random.choice(greetings)[0] if greetings else "С днем любви!"
+        await update.message.reply_text(greeting)
 
 
 # === Добавление валентинки ===
