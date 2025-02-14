@@ -44,9 +44,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = update.message.from_user.username
     cursor.execute("SELECT question FROM users WHERE username=?", (username,))
     user = cursor.fetchone()
-
+    userid = str(update.message.from_user.id)
+    cursor.execute("SELECT question FROM users WHERE username=?", (userid,))
+    userid = cursor.fetchone()
     if user:
         await update.message.reply_text(f"Привет, {username}! Ответь на секретный вопрос:\n {user[0]}")
+        return
+    elif userid:
+        await update.message.reply_text(f"Привет, {userid}! Ответь на секретный вопрос:\n {userid[0]}")
         return
 
     # Получаем список всех поздравлений и выбираем рандомное
