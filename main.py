@@ -9,7 +9,7 @@ from telegram.ext import (
 TOKEN = "7846671959:AAE9QJ3nFNWNrGXZInp6utnCugaYU1QhJpI"
 ADMIN_USERNAME = "m0onstoun"
 
-print("PGDATABASE:", os.getenv("PGDATABASE"))
+print("PGDATABASE:", os.getenv("Postgres.PGDATABASE"))
 print("PGUSER:", os.getenv("PGUSER"))
 print("PGPASSWORD:", os.getenv("PGPASSWORD"))
 print("PGHOST:", os.getenv("PGHOST"))
