@@ -1,250 +1,207 @@
-import sqlite3
-import random
+import os
+import re
 from telegram import Update
-from telegram.ext import (
-    Application, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler
-)
-
-# postgresql://postgres:NeHOTwRTxSabYitdgNedblEXNsYvGLBi@postgres.railway.internal:5432/railway
-TOKEN = "7846671959:AAE9QJ3nFNWNrGXZInp6utnCugaYU1QhJpI"
-ADMIN_USERNAME = "m0onstoun"
-
-# Создание базы данных
-conn = sqlite3.connect("valentines.db", check_same_thread=False)
-cursor = conn.cursor()
-
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT UNIQUE,
-    question TEXT,
-    answer TEXT,
-    message TEXT
-)
-""")
-
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS greetings (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    text TEXT UNIQUE
-)
-""")
-
-# Добавляем стандартное поздравление (если нет)
-cursor.execute("INSERT OR IGNORE INTO greetings (text) VALUES ('С днем любви!')")
-conn.commit()
-
-# Состояния для добавления валентинки
-USERNAME, QUESTION, ANSWER, MESSAGE = range(4)
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
+import openai
 
 
-# === Функции ===
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Приветствие"""
-    username = update.message.from_user.username
-    cursor.execute("SELECT question FROM users WHERE username=?", (username,))
-    user = cursor.fetchone()
-    userid = str(update.message.from_user.id)
-    cursor.execute("SELECT question FROM users WHERE username=?", (userid,))
-    userid = cursor.fetchone()
-    if user:
-        await update.message.reply_text(f"Привет, {username}! Ответь на секретный вопрос:\n {user[0]}")
-        return
-    elif userid:
-        await update.message.reply_text(f"Привет, {userid}! Ответь на секретный вопрос:\n {userid[0]}")
-        return
-
-    # Получаем список всех поздравлений и выбираем рандомное
-    cursor.execute("SELECT text FROM greetings")
-    greetings = cursor.fetchall()
-
-    if greetings:
-        greeting = random.choice(greetings)[0]
-        await update.message.reply_text(greeting)
-    else:
-        await update.message.reply_text("С днем любви!")
+openai.api_key = "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"
 
 
-async def check_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    username = update.message.from_user.username
-    answer = update.message.text.strip()
+class HSEChatBot:
+    def __init__(self, files=None):
+        self._init_templates()
 
-    cursor.execute("SELECT answer, message FROM users WHERE username=?", (username,))
-    user = cursor.fetchone()
-    userid = str(update.message.from_user.id)
-    cursor.execute("SELECT answer, message FROM users WHERE username=?", (userid,))
-    userid = cursor.fetchone()
-    if (user and (user[0].lower() == answer.lower())) or (userid and (userid[0].lower() == answer.lower())):
-        if user:
-            await update.message.reply_text(f"Лично в чатик! Как сказал Гоша:\n\n💌 {user[1]}")
-        else:
-            await update.message.reply_text(f"Лично в чатик! Как сказал Гоша:\n\n💌 {userid[1]}")
-        admin_chat_id = 1537088229  # ID админа
-        await context.bot.send_message(chat_id=admin_chat_id, text=f"💌 @{username} прочитал(а) свою валентинку!")
-    elif user or userid:
-        await update.message.reply_text("Неправильно!")
-    else:
-        cursor.execute("SELECT text FROM greetings")
-        greetings = cursor.fetchall()
-        greeting = random.choice(greetings)[0] if greetings else "С днем любви!"
-        await update.message.reply_text(greeting)
+    def _init_templates(self):
+        self.templates = {
+            # ВШЭ общие
+            r'что такое вшэ|что такое вышка': (
+                "🏛️ вшэ — это как большой фестиваль знаний: экономика, IT, гуманитарка и куча других штук. не паникуй, освоишься"
+            ),
+            r'кто така вшэ': (
+                "🏛️ вшэ — твой второй дом на ближайшие годы. тут учатся люди, которые не боятся проб и ошибок, как и ты"
+            ),
+            r'адрес корпуса|где находится вшэ': (
+                "📍 главный корпус — мясницкая, 20. еще у нас есть корпуса на покровке и ленинских горах. карты и навигатор спасают, не стесняйся юзать"
+            ),
+            r'сколько.*корпусов': (
+                "🏫 в Москве их семь. ещё не загулял по всем? самое время устроить локационный квест"
+            ),
 
+            # Документы
+            r'справку об обучении': (
+                "📝 всё просто: заходишь в ""студент"" на сайте, выбираешь справку, отправляешь заявку и ждешь уведомления. если горит — пиши в поддержку"
+            ),
+            r'аттестат': (
+                "📄 забыл аттестат дома? в учебном офисе восстановят бумагу без лишних вопросов"
+            ),
 
-# === Добавление валентинки ===
-async def add_valentine_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Начало процесса добавления валентинки"""
-    if update.message.from_user.username != ADMIN_USERNAME:
-        return
-    await update.message.reply_text("Введите username получателя:")
-    return USERNAME
+            # Стипендии
+            r'стипендии?': (
+                "💰 академка от 2100₽, социалка до 10к, повышенка для топ-15% рейтинга. если в этом семестре упал — не беда, за следующий возьмешь наверняка"
+            ),
+            r'когда.*начисля.*стипенд': (
+                "💸 обычно капают после 25 числа, но статус можно глянуть в личном кабинете. если деньги не пришли — штурмуй учебный офис"
+            ),
 
+            # Расписание
+            r'расписани[ея]': (
+                "🕒 лови чек-лист: 1) hse app x; 2) ruz.hse.ru; 3) виджет Smart LMS. дальше прокачиваешь навыки тайм-менеджмента"
+            ),
 
-async def add_valentine_username(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Запрос секретного вопроса"""
-    context.user_data["username"] = update.message.text.strip()
-    await update.message.reply_text("Введите секретный вопрос:")
-    return QUESTION
+            # Попаткус
+            r'попаткус': (
+                "📜 попаткус — это как свод выживания в вшэ: правила пересдач, оценки, экзамены. не читай его весь, знай, где копать при форс-мажоре"
+            ),
 
+            # Навигация
+            r'потерялс[яи]|где корпус': (
+                "📍 буква корпуса — это буква, цифра — этаж. R305 значит корпус R, 3 этаж. самое забавное — это цветные линии на полу, как в хорроре, но на самом деле полезно"
+            ),
 
-async def add_valentine_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Запрос ответа на секретный вопрос"""
-    context.user_data["question"] = update.message.text.strip()
-    await update.message.reply_text("Введите ответ на секретный вопрос:")
-    return ANSWER
+            # Учебный офис
+            r'учебный офис': (
+                "🏢 учебный офис — твои админы, которые помогают с расписанием, академичкой и пересдачами. пн–пт 10:00–18:00, заходи без стеснения"
+            ),
 
+            # Одиночество
+            r'одиноко|мне одиноко': (
+                "😔 чувствуешь себя чужаком? классика первокурса. совет: врывайся в групповые чаты, предлагай помощь по проектам или просто пиши мне, дружить не возбраняется"
+            ),
 
-async def add_valentine_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Запрос текста валентинки"""
-    context.user_data["answer"] = update.message.text.strip()
-    await update.message.reply_text("Введите текст валентинки:")
-    return MESSAGE
+            # Стресс
+            r'стресс|тревож': (
+                "😌 если паникуешь — сделай микроперерывчик: встань, потянись, возьми печеньку в столовке. легкий мем не помешает"
+            ),
 
+            # Группа и перевод
+            r'перевестись': (
+                "🔄 хочешь сменить группу? обычно можно с 2 семестра или летом. только не строй план побега, просто сходи в учебный офис"
+            ),
 
-async def add_valentine_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Финальный этап — сохранение в БД"""
-    context.user_data["message"] = update.message.text.strip()
+            # Английский
+            r'выбирать|английск': (
+                "🇬🇧 выбираешь направление английского? один трек = одна заявка. если передумаешь — сможешь сменить во втором семестре"
+            ),
+            r'расписание слотов': (
+                "📅 слоты — это твои занятия. проверяй оранжевую метку, чтобы не было накладок с другими парами"
+            ),
 
-    username = context.user_data["username"]
-    question = context.user_data["question"]
-    answer = context.user_data["answer"]
-    message = context.user_data["message"]
+            # LMS и приложения
+            r'лмс': (
+                "💻 smart lms — для заданий, e-learning — для отчетов. а hse app x — для всего сразу"
+            ),
+            r'какие приложения': (
+                "📱 качай hse app x, google docs/slides, а остальное — по ситуации. для баз данных есть pgadmin, для кода — vscode"
+            ),
 
-    cursor.execute("INSERT INTO users (username, question, answer, message) VALUES (?, ?, ?, ?)",
-                   (username, question, answer, message))
-    conn.commit()
+            # Дополнительные темы
+            r'оформить ссылки': (
+                "🔗 делай сноски в тексте, а в конце — список источников по алфавиту. не надо мудрить"
+            ),
+            r'рейтинг': (
+                "📈 у нас два рейтинга: текущий за модули и кумулятивный за все время. английский влияет только на кумулятивный"
+            ),
+            r'оспорить оценку': (
+                "⚖️ не нравится оценка? пиши в учебный офис или на bzd@hse.ru — аргументы приветствуются"
+            ),
+            r'трек .*бжд': (
+                "🚀 хочешь трек по бжд? выбирай по интересам: Вышка Добра, Базовая платформа, Республика ученых и т.п."
+            ),
+            r'экзамен.*блокирующ': (
+                "❓ блокирующий экзамен? смотри ПУД или гугли информацию по курсу. чаще всего там все написано"
+            ),
+            r'рассказать про предмет': (
+                "📚 хочешь инфу по предмету? сайт кафедры или прямиком препод — лайфхак"
+            ),
+            r'покушать.*корпус': (
+                "🍫 в корпусе на Трехсвяте: вендинги, кофе, печеньки — идеальное топливо для лекций"
+            ),
+            r'на стенах.*писать': (
+                "🖌️ можно рисовать, но только на стенах с покрытием для творчества. иначе охранники не поймут"
+            ),
+            r'физра|спорт': (
+                "🏋️‍♂️ физры нет, но спортзал внутри вышки открыт для всех — займись чем-то бодрящим"
+            ),
+            r'оценки': (
+                "🔢 десятибаллька: <4 — жестко, 4-5 — сойдет, 6-7 — норм, 8-10 — красавчики"
+            ),
+            r'адрес.*т[рр]ехсвят': (
+                "📍 Малый Трёхсвятительский пер., 8/2с1 — корпус Школы коммуникаций. Уютно и мило, прям как кафе с винтажем."
+            ),
+            r'занятия.*других корпус': (
+                "🏫 Да, пары могут быть и в других корпусах, например, на Покровке. Следи за расписанием в HSE App и LMS — не промахнёшься!"
+            ),
+            r'записаться.*английск': (
+                "🇬🇧 Запись на английский через Smartway или LMS. Также можно уточнить в учебном офисе или пойти в языковую школу Вышки."
+            ),
+            r'где.*рейтинг': (
+                "📊 Рейтинг ищи в LMS (https://lms.hse.ru/), разделы 'Успеваемость' и 'Рейтинги'. Там и текущий, и кумулятивный — оба важны!"
+            ),
+            r'пуд': (
+                "📘 ПУД — профильно-универсальный дисциплинарный курс: для 1-2 курсов, с лекциями, семинарами и проектами. Кругозор гарантирован!"
+            )
+        }
 
-    await update.message.reply_text(f"✅ Валентинка для @{username} добавлена!")
-    return ConversationHandler.END
-
-
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Отмена ввода"""
-    await update.message.reply_text("🚫 Добавление отменено.")
-    return ConversationHandler.END
-
-
-# === Управление поздравлениями ===
-async def add_greeting(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Добавляет новое поздравление"""
-    if update.message.from_user.username != ADMIN_USERNAME:
-        return
-    greeting = " ".join(context.args)
-
-    if greeting:
+    def generate_answer(self, question):
+        prompt = f"Вопрос: {question}\nОтвет:"
         try:
-            cursor.execute("INSERT INTO greetings (text) VALUES (?)", (greeting,))
-            conn.commit()
-            await update.message.reply_text(f"✅ Добавлено новое поздравление:\n{greeting}")
-        except sqlite3.IntegrityError:
-            await update.message.reply_text("⚠ Такое поздравление уже есть в базе!")
-    else:
-        await update.message.reply_text("⚠ Используйте формат:\n/add_greeting текст")
+            response = openai.ChatCompletion.create(
+                model="gpt-4o",
+                messages=[
+                    {
+                            "role": "system",
+                            "content": (
+                                "Ты - Дана, старшекурсница Высшей Школы Экономики. "
+                                "Ты отвечаешь как старшая сестра: дружелюбно, неформально, с лёгкой иронией. "
+                                "Твой стиль: расслабленно-поддерживающий, как будто пишешь младшекурснику в Telegram. "
+                                "Говоришь просто, с эмпатией и мемными вбросами, но без перегиба. "
+                                "— Можно чуть пофигизма\n"
+                                "— Можно самоиронии\n"
+                                "— Мемы ок, но без перегруза\n"
+                                "— Эмпатия ок, но не нянчься\n"
+                                "— Абсурдные шутки ок, если снимают напряжение\n"
+                                "Избегай пафоса, перегруза сленгом и мата. Пиши с маленькой буквы."
+                            )
+                        },
+                        {"role": "user", "content": prompt}
+                    ],
+                    max_tokens=200,
+                    temperature=0.7,
+                    top_p=0.9
+                )
+            return response['choices'][0]['message']['content'].strip()
+        except Exception as e:
+            print("OpenAI error:", e)
+            return "не уверена 😔 перефразируй вопрос"
+
+    def answer(self, question):
+        q = question.lower().strip()
+        for pattern, answer in self.templates.items():
+            if re.search(pattern, q):
+                return answer
+        return self.generate_answer(q)
 
 
-async def remove_greeting(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Удаляет конкретное поздравление"""
-    if update.message.from_user.username != ADMIN_USERNAME:
-        return
-    greeting = " ".join(context.args)
-
-    cursor.execute("DELETE FROM greetings WHERE text=?", (greeting,))
-    conn.commit()
-
-    if cursor.rowcount:
-        await update.message.reply_text(f"✅ Поздравление удалено:\n{greeting}")
-    else:
-        await update.message.reply_text("⚠ Такого поздравления нет в базе!")
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("привет! я бот-кураторка ВШЭ. задавай свои вопросы про вуз🥰")
 
 
-async def list_greetings(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Выводит список всех поздравлений"""
-    if update.message.from_user.username != ADMIN_USERNAME:
-        return
-
-    cursor.execute("SELECT text FROM greetings")
-    greetings = cursor.fetchall()
-
-    if greetings:
-        text = "\n".join([f"🔹 {g[0]}" for g in greetings])
-        await update.message.reply_text(f"📜 Список поздравлений:\n{text}")
-    else:
-        await update.message.reply_text("❌ В базе пока нет поздравлений.")
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_q = update.message.text
+    bot = context.bot_data['hse_bot']
+    response = bot.answer(user_q)
+    await update.message.reply_text(response)
 
 
-# === Команды для админа ===
-async def remove_valentine(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Удаляет пользователя (для m0onstoun)"""
-    if update.message.from_user.username != ADMIN_USERNAME:
-        return
-    try:
-        username = context.args[0]
-        cursor.execute("DELETE FROM users WHERE username=?", (username,))
-        conn.commit()
-        await update.message.reply_text(f"✅ Валентинка для @{username} удалена!")
-    except:
-        await update.message.reply_text("⚠ Ошибка! Используйте формат:\n/remove_valentine username")
+if __name__ == '__main__':
+    token = "7649241013:AAHpMTn1H44Sb5YEJ6SiayyBwmSspddhd1k"  # Заменить на переменную среды для безопасности
+    hse_bot = HSEChatBot()
 
+    app = ApplicationBuilder().token(token).build()
+    app.bot_data['hse_bot'] = hse_bot
 
-async def list_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показывает всех зарегистрированных пользователей"""
-    if update.message.from_user.username != ADMIN_USERNAME:
-        return
-    cursor.execute("SELECT username FROM users")
-    users = cursor.fetchall()
+    app.add_handler(CommandHandler('start', start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    if users:
-        user_list = "\n".join([f"🔹 @{u[0]}" for u in users])
-        await update.message.reply_text(f"📜 Список пользователей:\n{user_list}")
-    else:
-        await update.message.reply_text("❌ Пока нет зарегистрированных пользователей.")
-
-
-# === Запуск Бота ===
-def main():
-    app = Application.builder().token(TOKEN).build()
-
-    # Команды
-    app.add_handler(CommandHandler("start", start))
-    conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("add_valentine", add_valentine_start)],
-        states={
-            USERNAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_valentine_username)],
-            QUESTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_valentine_question)],
-            ANSWER: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_valentine_answer)],
-            MESSAGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_valentine_message)],
-        },
-        fallbacks=[CommandHandler("cancel", cancel)]
-    )
-    app.add_handler(conv_handler)
-    app.add_handler(CommandHandler("add_greeting", add_greeting))
-    app.add_handler(CommandHandler("remove_greeting", remove_greeting))
-    app.add_handler(CommandHandler("list_greetings", list_greetings))
-    app.add_handler(CommandHandler("remove_valentine", remove_valentine))
-    app.add_handler(CommandHandler("list_users", list_users))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check_answer))
-    print("🚀 Бот запущен!")
     app.run_polling()
-
-
-if __name__ == "__main__":
-    main()
