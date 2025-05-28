@@ -4,7 +4,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, Con
 import openai
 
 
-openai.api_key = "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"
+openai.api_key = "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"
 
 
 class HSEChatBot:
