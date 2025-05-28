@@ -2,12 +2,9 @@ import re
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 import openai
-import os
-from dotenv import load_dotenv
 
-load_dotenv()
 
-openai.api_key = os.getenv("OPENAI_API_KEY")
+openai.api_key = "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"
 
 
 class HSEChatBot:
