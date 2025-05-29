@@ -248,7 +248,7 @@ class HSEChatBot:
             print("OpenAI error:", e)
             return "не уверена 😔 перефразируй вопрос"
 
-    async def answer(self, question):
+    def answer(self, question):
         q = question.lower().strip()
         for pattern, answer in self.templates.items():
             if re.search(pattern, q):
