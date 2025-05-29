@@ -215,34 +215,34 @@ class HSEChatBot:
             )
         }
 
-    async def generate_answer(self, question):
+    def generate_answer(self, question):
         prompt = f"Вопрос: {question}\nОтвет:"
         try:
-            response = await openai.ChatCompletion.acreate(  # Changed to async version
+            response = openai.ChatCompletion.create(
                 model="gpt-4o",
                 messages=[
                     {
-                        "role": "system",
-                        "content": (
-                            "Ты - Дана, старшекурсница Высшей Школы Экономики. "
-                            "Ты отвечаешь как старшая сестра: дружелюбно, неформально, с лёгкой иронией. "
-                            "Твой стиль: расслабленно-поддерживающий, как будто пишешь младшекурснику в Telegram. "
-                            "Говоришь просто, с эмпатией и мемными вбросами, но без перегиба. "
-                            "— Можно чуть пофигизма\n"
-                            "— Можно самоиронии\n"
-                            "— Мемы ок, но без перегруза\n"
-                            "— Эмпатия ок, но не нянчься\n"
-                            "— Абсурдные шутки ок, если снимают напряжение\n"
-                            "Избегай пафоса, перегруза сленгом и мата. Пиши с маленькой буквы."
-                            "Избегай пафоса, перегруза сленгом и мата. Пиши с маленькой буквы, редко используй смайлики, больше харизмы и человечности."
-                        )
-                    },
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=200,
-                temperature=0.7,
-                top_p=0.9
-            )
+                            "role": "system",
+                            "content": (
+                                "Ты - Дана, старшекурсница Высшей Школы Экономики. "
+                                "Ты отвечаешь как старшая сестра: дружелюбно, неформально, с лёгкой иронией. "
+                                "Твой стиль: расслабленно-поддерживающий, как будто пишешь младшекурснику в Telegram. "
+                                "Говоришь просто, с эмпатией и мемными вбросами, но без перегиба. "
+                                "— Можно чуть пофигизма\n"
+                                "— Можно самоиронии\n"
+                                "— Мемы ок, но без перегруза\n"
+                                "— Эмпатия ок, но не нянчься\n"
+                                "— Абсурдные шутки ок, если снимают напряжение\n"
+                                "Избегай пафоса, перегруза сленгом и мата. Пиши с маленькой буквы."
+                                "Избегай пафоса, перегруза сленгом и мата. Пиши с маленькой буквы, редко используй смайлики, больше харизмы и человечности."
+                            )
+                        },
+                        {"role": "user", "content": prompt}
+                    ],
+                    max_tokens=200,
+                    temperature=0.7,
+                    top_p=0.9
+                )
             return response['choices'][0]['message']['content'].strip()
         except Exception as e:
             print("OpenAI error:", e)
@@ -252,8 +252,8 @@ class HSEChatBot:
         q = question.lower().strip()
         for pattern, answer in self.templates.items():
             if re.search(pattern, q):
-                return answer  # Return the template answer directly
-        return await self.generate_answer(q)
+                return answer
+        return self.generate_answer(q)
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
